@@ -1,0 +1,2 @@
+tests: 
+	nvcc tests.cu

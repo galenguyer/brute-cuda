@@ -1,28 +1,66 @@
 #include <cuda.h>
 #include <stdint.h>
-#include <string.h>
 #include "md5.cu"
 
-char* hash(const char* h_str) {
-    char* d_str;
-    unsigned char* h_res = (unsigned char*)malloc(sizeof(unsigned char)*(32 + 1));
-    unsigned char* d_res;
-    cudaMalloc((void**)&d_str, sizeof(char) * strlen(h_str));
-    cudaMalloc((void**)&d_res, sizeof(char) * 32);
-    cudaMemcpy(d_str, h_str, sizeof(char) * strlen(h_str), cudaMemcpyHostToDevice);
-
-    md5<<<1, 1>>>(d_str, (uint32_t)strlen(h_str), d_res);
-
-    cudaMemcpy(h_res, d_res, sizeof(unsigned char)*(32), cudaMemcpyDeviceToHost);
-
-    cudaFree(d_str);
-    cudaFree(d_res);
-
-    char* res = (char*)malloc(sizeof(char)*32);
-    for (int i = 0; i < 16; i++) {
-        sprintf(&res[i*2], "%2.2x", h_res[i]);
+__device__ int pow(int x, int y) {
+    int res = 1;
+    for(int i = 0; i < y; i++) {
+        res *= x;
     }
     return res;
+}
+
+__device__ char* itoa(int i) {
+    int len = 1, temp = i;
+    while ((temp /= 10) > 0) {
+        len++;
+    }
+    char* a = (char*)malloc(sizeof(char)*(len + 1));
+    for(int idx = len-1; idx >= 0; idx--) {
+        temp = i / pow(10, idx) % 10;
+        a[len-idx-1] = temp + '0';
+    }
+    a[len] = '\0';
+    return a;
+}
+
+__device__ int strlen(char* str) {
+    int len;
+    for(len = 0; str[len] != '\0'; len++) { }
+    return len;
+}
+
+__device__ char* hexify(unsigned char* input) {
+    char* output = (char*)malloc(sizeof(char)*(MD5_HASH_SIZE*2+1));
+    const char* map = "0123456789abcdef";
+
+    for(int i = 0; i < MD5_HASH_SIZE; i++) {
+        output[i*2] = map[(input[i] & 0xF0) >> 4];
+        output[i*2+1] = map[(input[i] & 0x0F)];
+    }
+    output[MD5_HASH_SIZE*2 + 1] = '\0';
+    return output;
+}
+
+__global__ void brute(int threads, int* randNums) {
+    int seed = randNums[(blockIdx.x*threads)+threadIdx.x];
+    char* buffer = itoa(seed);
+    printf("starting thread %d with seed %s\n", (blockIdx.x * threads) + threadIdx.x, buffer);
+    buffer = hexify(md5(buffer, strlen(buffer)));
+    while (1) {
+        char* old_buffer = buffer;
+        buffer = hexify(md5(buffer, strlen(buffer)));
+        int len = strlen(buffer);
+        for (int i = len-1; i > 0; i--){
+            if (old_buffer[i] != buffer[i]) {
+                if (len-i > 2) {
+                    printf("new best suffix match: %d characters\n", len-i-1);
+                    printf("%s -> %s\n", old_buffer, buffer);
+                }
+                break;
+            }
+        }
+    }
 }
 
 int run_test(const char* name, const char* result, const char* expected) {
@@ -35,37 +73,17 @@ int run_test(const char* name, const char* result, const char* expected) {
     }
 }
 
-
 int main() {
-    int passed = 0, failed = 0;
-    printf("----------------------------------------------------\n");
-    printf("                       TESTS                        \n");
-    printf("----------------------------------------------------\n");
-    run_test("md5(\"\")", hash(""), "d41d8cd98f00b204e9800998ecf8427e") ? passed++ : failed++;
-    run_test("md5(\"a\")", hash("a"), "0cc175b9c0f1b6a831c399e269772661") ? passed++ : failed++;
-    run_test("md5(\"abc\")", hash("abc"), "900150983cd24fb0d6963f7d28e17f72") ? passed++ : failed++;
-    run_test("md5(\"message digest\")", hash("message digest"), "f96b697d7cb7938d525a2f31aaf161d0") ? passed++ : failed++;
-    run_test("md5(\"abcdefghijklmnopqrstuvwxyz\")", \
-        hash("abcdefghijklmnopqrstuvwxyz"), \
-        "c3fcd3d76192e4007dfb496cca67e13b") ? passed++ : failed++;
-    run_test("md5(\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\")", \
-        hash("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"), \
-        "d174ab98d277d9f5a5611c2c9f419d9f") ? passed++ : failed++;
-    run_test("md5(\"12345678901234567890123456789012345678901234567890123456789012345678901234567890\")", \
-        hash("12345678901234567890123456789012345678901234567890123456789012345678901234567890"), \
-        "57edf4a22be3c955ac49da2e2107b67a") ? passed++ : failed++;
-
-    printf("Tests Passed: %i\n", passed);
-    printf("Tests Failed: %i\n", failed);
-
-    printf("----------------------------------------------------\n");
-    printf("                     BENCHMARKS                     \n");
-    printf("----------------------------------------------------\n");
-    
-    for(int i = 0; i < 100000; i++) {
-        hash("aa");
+    int blocks = 16;
+    int threads = 16;
+    srand(time(0));
+    int* h_randNums = (int*)malloc(sizeof(int) * blocks * threads);
+    for (int i = 0; i < blocks * threads; i++) {
+        h_randNums[i] = rand();
     }
-    puts("Ran 100000 hashes");
-
-    return failed;
+    int* d_randNums;
+    cudaMalloc((void**)&d_randNums, sizeof(int)*blocks*threads);
+    cudaMemcpy(d_randNums, h_randNums, sizeof(int)*blocks*threads, cudaMemcpyHostToDevice);
+    brute<<<blocks, threads>>>(threads, d_randNums);
+    cudaDeviceSynchronize();
 }
