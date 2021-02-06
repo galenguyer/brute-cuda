@@ -35,11 +35,10 @@ __device__ char* hexify(unsigned char* input) {
     const char* map = "0123456789abcdef";
 
     for(int i = 0; i < MD5_HASH_SIZE; i++) {
-        printf("%d, %d\n", (input[i] & 0xF0) >> 4, (input[i] & 0x0F));
         output[i*2] = map[(input[i] & 0xF0) >> 4];
         output[i*2+1] = map[(input[i] & 0x0F)];
     }
-    output[MD5_HASH_SIZE*2 + 1] = '\0';
+    output[MD5_HASH_SIZE*2] = '\0';
     return output;
 }
 
@@ -78,12 +77,12 @@ int run_test(const char* name, const char* result, const char* expected) {
 int main() {
     int blocks = 16;
     int threads = 16;
-    srand(time(0));
     int* h_randNums = (int*)malloc(sizeof(int) * blocks * threads);
     for (int i = 0; i < blocks * threads; i++) {
         h_randNums[i] = rand();
     }
     int* d_randNums;
+    cudaSetDevice(0);
     cudaMalloc((void**)&d_randNums, sizeof(int)*blocks*threads);
     cudaMemcpy(d_randNums, h_randNums, sizeof(int)*blocks*threads, cudaMemcpyHostToDevice);
     brute<<<blocks, threads>>>(threads, d_randNums);
