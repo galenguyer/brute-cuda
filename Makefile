@@ -1,2 +1,2 @@
-tests: 
-	nvcc tests.cu
+tests:
+	nvcc -g -G tests.cu

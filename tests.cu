@@ -35,6 +35,7 @@ __device__ char* hexify(unsigned char* input) {
     const char* map = "0123456789abcdef";
 
     for(int i = 0; i < MD5_HASH_SIZE; i++) {
+        printf("%d, %d\n", (input[i] & 0xF0) >> 4, (input[i] & 0x0F));
         output[i*2] = map[(input[i] & 0xF0) >> 4];
         output[i*2+1] = map[(input[i] & 0x0F)];
     }
@@ -48,18 +49,19 @@ __global__ void brute(int threads, int* randNums) {
     printf("starting thread %d with seed %s\n", (blockIdx.x * threads) + threadIdx.x, buffer);
     buffer = hexify(md5(buffer, strlen(buffer)));
     while (1) {
-        char* old_buffer = buffer;
+        //char* old_buffer = buffer;
         buffer = hexify(md5(buffer, strlen(buffer)));
-        int len = strlen(buffer);
-        for (int i = len-1; i > 0; i--){
+        /*for (int i = 32-1; i > 0; i--){
+            printf("%s, %s\n", old_buffer, buffer);
             if (old_buffer[i] != buffer[i]) {
-                if (len-i > 2) {
-                    printf("new best suffix match: %d characters\n", len-i-1);
+                if (32-i > 4) {
+                    printf("new best suffix match: %d characters\n", 32-i-1);
                     printf("%s -> %s\n", old_buffer, buffer);
                 }
                 break;
             }
         }
+        free(old_buffer);*/
     }
 }
 
@@ -86,4 +88,9 @@ int main() {
     cudaMemcpy(d_randNums, h_randNums, sizeof(int)*blocks*threads, cudaMemcpyHostToDevice);
     brute<<<blocks, threads>>>(threads, d_randNums);
     cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+       printf("CUDA Error: %s\n", cudaGetErrorString(err));
+    }
 }
