@@ -218,7 +218,7 @@ __device__ void md5_finalize(struct md5_context* ctx, struct md5_digest* digest)
     digest->bytes[15] = (uint8_t)(ctx->d >> 24);
 }
 
-__device__ unsigned char* md5(const char* input, const uint32_t input_len) {
+__device__ void md5(const char* input, const uint32_t input_len, unsigned char* result) {
     struct md5_context context;
     struct md5_digest digest;
 
@@ -226,10 +226,7 @@ __device__ unsigned char* md5(const char* input, const uint32_t input_len) {
     md5_update(&context, input, input_len);
     md5_finalize(&context, &digest);
 
-    unsigned char* result = (unsigned char*) malloc(sizeof(char) * (32 + 1));
-    for (int i = 0; i < sizeof(digest); i++){
+    for (int i = 0; i < 16; i++){
         result[i] = (unsigned char)digest.bytes[i];
     }
-    result[sizeof(digest)] = '\0';
-    return result;
 }
