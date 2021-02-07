@@ -46,7 +46,6 @@ __device__ void hexify(const unsigned char* input, char* output) {
 __global__ void brute(int threads, int* randNums) {
     int seed = randNums[(blockIdx.x*threads)+threadIdx.x];
     char* seed_buffer = itoa(seed);
-    //printf("[%d->%d] starting with seed %s\n", blockIdx.x, threadIdx.x, seed_buffer);
 
     unsigned char seed_md5[16];
     md5(seed_buffer, strlen(seed_buffer), seed_md5);
@@ -84,39 +83,6 @@ __global__ void brute(int threads, int* randNums) {
     }
 }
 
-__global__ void bench(int blocks, int threads, int* randNums) {
-    int seed = randNums[(blockIdx.x*threads)+threadIdx.x];
-    char* seed_buffer = itoa(seed);
-    //printf("[%d->%d] starting with seed %s\n", blockIdx.x, threadIdx.x, seed_buffer);
-
-    unsigned char seed_md5[16];
-    md5(seed_buffer, strlen(seed_buffer), seed_md5);
-    
-    char buffer[33];
-    hexify(seed_md5, buffer);
-
-    for(int i = 0; i < (1000000/(blocks * threads)); i++) {
-        char* old_buffer = (char*)malloc(sizeof(char)*33);
-        memcpy(old_buffer, buffer, 33);
-
-        md5(buffer, strlen(buffer), seed_md5);
-        hexify(seed_md5, buffer);
-
-        for (int i = 0; i < 32; i++){
-            if (old_buffer[i] != buffer[i]) {
-                break;
-            }
-        }
-        for (int i = 32-1; i > 0; i--){
-            if (old_buffer[i] != buffer[i]) {
-                break;
-            }
-        }
-
-        free(old_buffer);
-    }
-}
-
 int run_test(const char* name, const char* result, const char* expected) {
     if (strcmp(expected, result) == 0) {
         printf("TEST PASSED: %s: expected %s, got %s\n", name, expected, result);
@@ -139,20 +105,6 @@ int main() {
     cudaMalloc((void**)&d_randNums, sizeof(int)*h_blocks*h_threads);
     cudaMemcpy(d_randNums, h_randNums, sizeof(int)*h_blocks*h_threads, cudaMemcpyHostToDevice);
 
-    // float elapsedTime;
-    // cudaEvent_t bench_start, bench_stop;
-    // cudaEventCreate(&bench_start); 
-    // cudaEventRecord(bench_start, 0);
-    // printf("Running 1,000,000 iterations...\n");
-    // bench<<<h_blocks, h_threads>>>(h_blocks, h_threads, d_randNums);
-    // cudaEventCreate(&bench_stop);
-    // cudaEventRecord(bench_stop, 0); 
-    // cudaEventSynchronize(bench_stop); 
-    // cudaEventElapsedTime(&elapsedTime, bench_start, bench_stop);
-    // printf("Elapsed time: %fms\n\n", elapsedTime);
-
-    cudaMalloc((void**)&d_randNums, sizeof(int)*h_blocks*h_threads);
-    cudaMemcpy(d_randNums, h_randNums, sizeof(int)*h_blocks*h_threads, cudaMemcpyHostToDevice);
     brute<<<h_blocks, h_threads>>>(h_threads, d_randNums);
     cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
